@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 3 of the License, or (at your option)
+# any later version.
+#
+# Simple init script written bash
+# You can edit this file
+#
+# PATH variable
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+# Remount filesystem as root
+mount -o remount,rw /
+# Starting tmpfiles
+if [[ -f /bin/systemd-tmpfiles ]] ; then
+    /bin/systemd-tmpfiles --create # systemd way
+elif [[ -f /bin/tmpfiles ]] ; then
+    tmpfiles --create # openrc-tmpfiles way
+fi
+# Starting udev daemon
+# Systemd-udevd or eudev
+if [[ -f /lib/systemd/systemd-udevd ]] ; then
+    /lib/systemd/systemd-udevd --daemon # systemd-udev way
+elif [[ -f /sbin/udevd ]] ; then
+    /sbin/udevd --daemon # eudev way
+fi
+# Starting udevadm
+udevadm trigger -c add
+udevadm settle
+# Create /dev/shm if doesn't exist.
+if [[ ! -d /dev/shm ]] ; then
+    mkdir /dev/shm
+    mount -t tmpfs tmpfs /dev/shm
+fi
+# Set hostname
+hostname $(cat /etc/hostname)
+# Setting PATH again (udev rules may reset PATH)
+source /etc/profile
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+# Starting dbus daemon
+mkdir -p /run/dbus/
+dbus-daemon --system --nofork &
+sleep 1
+# Starting NetworkManager
+NetworkManager &
+#define respawn function
+respawn(){
+    # If process done or exited, Wait 0.1 second then
+    # restart again.
+    while true ; do
+        $*
+        sleep 0.1
+    done
+}
+# Starting getty consoles
+respawn /bin/busybox getty 38400 tty1 &
+respawn /bin/busybox getty 38400 tty2 &
+respawn /bin/busybox getty 38400 tty3 &
+respawn /bin/busybox getty 38400 tty4 &
+respawn /bin/busybox getty 38400 tty5 &
+respawn /bin/busybox getty 38400 tty6 &
+respawn /bin/busybox getty 38400 tty7 &
+#
+# Base boot process done.
+# Starting optional services
+#
+# Starting logind
+if [[ -f /lib/elogind/elogind ]] ; then
+    respawn /lib/elogind/elogind & # (nosystemd way)
+elif [[ -f /lib/systemd/systemd-logind ]] ; then
+    respawn /lib/systemd/systemd-logind & # (systemd way)
+fi
+#
+# Starting lightdm
+respawn lightdm &
+
+# All boot process done.
+# Running infinitive sleep.
+# Do not edit this area
+exec sleep inf
